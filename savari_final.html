@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Savari Auto Union - Persistent</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Noto+Sans+Tamil:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: { auto: { yellow: '#FFD700', black: '#1a1a1a', dark: '#0f0f0f' } },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], tamil: ['Noto Sans Tamil', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* AUTO BACKGROUND */
+        body { 
+            transition: all 0.3s ease; 
+            background-image: url('https://images.unsplash.com/photo-1596704017254-9b121068fb31?q=80&w=2070&auto=format&fit=crop'); 
+            background-size: cover; 
+            background-position: center; 
+            background-attachment: fixed;
+        }
+        
+        /* OVERLAY FOR READABILITY */
+        .bg-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: -1; transition: background 0.3s; }
+        .dark .bg-overlay { background: rgba(0,0,0,0.85); }
+        .light .bg-overlay { background: rgba(255,255,255,0.8); }
+
+        /* GLASSMORPHISM CARDS */
+        .glass-card { 
+            background: rgba(255, 255, 255, 0.95); 
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(255,255,255,0.3);
+            transition: all 0.3s;
+        }
+        .dark .glass-card { background: rgba(20, 20, 20, 0.95); border-color: rgba(255,215,0,0.15); }
+
+        /* ANIMATIONS */
+        .pulse-dot { animation: pulse-ring 2s infinite; }
+        @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.5; } 100% { transform: scale(2); opacity: 0; } }
+        
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 100; }
+        .toast { background: white; padding: 15px; border-radius: 12px; margin-bottom: 10px; 
+                 border-left: 5px solid #FFD700; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+                 display: flex; align-items: center; gap: 12px; animation: slideIn 0.4s ease-out; }
+        .dark .toast { background: #2d2d2d; color: white; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body class="text-gray-900 dark:text-gray-100 min-h-screen pb-24 font-sans light">
+
+    <!-- BACKGROUND OVERLAY -->
+    <div class="bg-overlay"></div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="glass-card rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold" data-i18n="settings_title">Settings</h3>
+                <button onclick="toggleSettings()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><i data-lucide="x"></i></button>
+            </div>
+            
+            <div class="mb-6">
+                <label class="block text-sm font-medium mb-2 opacity-70" data-i18n="language">Language</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="setLang('en')" id="btn-en" class="py-2 rounded-lg border-2 border-auto-yellow bg-auto-yellow/20 font-bold">English</button>
+                    <button onclick="setLang('ta')" id="btn-ta" class="py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 opacity-60">தமிழ்</button>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium mb-2 opacity-70" data-i18n="theme">Theme</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="setTheme('light')" id="btn-light" class="py-2 rounded-lg border-2 border-auto-yellow bg-auto-yellow/20 font-bold flex items-center justify-center gap-2"><i data-lucide="sun" class="w-4 h-4"></i> Light</button>
+                    <button onclick="setTheme('dark')" id="btn-dark" class="py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 opacity-60 flex items-center justify-center gap-2"><i data-lucide="moon" class="w-4 h-4"></i> Dark</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div id="toast-container"></div>
+
+    <!-- NAVBAR -->
+    <nav class="sticky top-0 z-40 bg-auto-black/90 backdrop-blur-md text-auto-yellow shadow-lg px-4 py-3 flex justify-between items-center border-b border-auto-yellow/20">
+        <div class="flex items-center gap-2 font-bold text-lg">
+            <i data-lucide="car-front" class="w-6 h-6"></i> 
+            <span data-i18n="app_name">Savari Union</span>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="toggleRole()" class="text-xs bg-auto-yellow text-black px-3 py-1.5 rounded-full font-bold shadow-lg">
+                <span id="role-label">Driver Mode</span>
+            </button>
+            <button onclick="toggleSettings()" class="p-1.5 bg-gray-800 rounded-full hover:bg-gray-700 border border-gray-600"><i data-lucide="settings" class="w-5 h-5"></i></button>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTENT -->
+    <div class="max-w-md mx-auto p-4 space-y-6 relative z-10">
+
+        <!-- ================= CUSTOMER VIEW ================= -->
+        <div id="customer-view" class="space-y-6">
+            
+            <!-- LOGIN STEP -->
+            <div id="cust-login-step" class="glass-card p-6 rounded-2xl shadow-xl border-l-4 border-auto-yellow">
+                <h2 class="text-2xl font-bold mb-2" data-i18n="welcome_cust">Welcome!</h2>
+                <p class="text-sm opacity-70 mb-6" data-i18n="enter_phone_first">Enter your phone number to continue</p>
+                
+                <div class="relative mb-4">
+                    <span class="absolute left-4 top-3.5 text-gray-500 font-bold">+91</span>
+                    <input type="tel" id="cust-phone" placeholder="98765 43210" class="w-full p-3 pl-14 bg-white/50 dark:bg-black/30 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-auto-yellow outline-none text-lg font-mono">
+                </div>
+                <button onclick="loginCustomer()" class="w-full btn-primary py-3 rounded-xl text-lg font-bold shadow-lg flex justify-center items-center gap-2">
+                    <span data-i18n="continue">Continue</span> <i data-lucide="arrow-right" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- BOOKING FORM WITH VILLAGES & PAYMENT -->
+            <div id="cust-booking-step" class="hidden glass-card p-6 rounded-2xl shadow-xl border-l-4 border-auto-yellow">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold" data-i18n="book_ride">Book an Auto</h2>
+                    <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold flex items-center gap-1">
+                        <div class="w-2 h-2 bg-green-500 rounded-full"></div> Verified
+                    </span>
+                </div>
+                
+                <div class="space-y-4 relative">
+                    <!-- Pickup Village Dropdown -->
+                    <div class="relative">
+                        <div class="absolute left-3 top-3.5 w-2 h-2 bg-auto-yellow rounded-full ring-4 ring-auto-yellow/20"></div>
+                        <select id="pickup" class="w-full p-3 pl-8 bg-white/50 dark:bg-black/30 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-auto-yellow outline-none appearance-none">
+                            <option value="" disabled selected data-i18n="select_pickup">Select Pickup Village</option>
+                            <option value="Thimmiredipalayam">Thimmiredipalayam</option>
+                            <option value="Gedilam">Gedilam</option>
+                            <option value="Sendhamangalam">Sendhamangalam</option>
+                            <option value="Vandipalayam">Vandipalayam</option>
+                            <option value="Vaipalayam">Vaipalayam</option>
+                            <option value="Krishnarettipalayam">Krishnarettipalayam</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="absolute right-3 top-3.5 w-5 h-5 text-gray-400 pointer-events-none"></i>
+                    </div>
+
+                    <!-- Connector Line -->
+                    <div class="absolute left-[19px] top-[42px] h-[85px] w-0.5 border-l border-dashed border-gray-400"></div>
+
+                    <!-- Drop Village Dropdown -->
+                    <div class="relative">
+                        <div class="absolute left-3 top-3.5 w-2 h-2 bg-red-500 rounded-full"></div>
+                        <select id="drop" class="w-full p-3 pl-8 bg-white/50 dark:bg-black/30 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-auto-yellow outline-none appearance-none">
+                            <option value="" disabled selected data-i18n="select_drop">Select Drop Village</option>
+                            <option value="Thimmiredipalayam">Thimmiredipalayam</option>
+                            <option value="Gedilam">Gedilam</option>
+                            <option value="Sendhamangalam">Sendhamangalam</option>
+                            <option value="Vandipalayam">Vandipalayam</option>
+                            <option value="Vaipalayam">Vaipalayam</option>
+                            <option value="Krishnarettipalayam">Krishnarettipalayam</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="absolute right-3 top-3.5 w-5 h-5 text-gray-400 pointer-events-none"></i>
+                    </div>
+                </div>
+
+                <!-- Payment Section -->
+                <div class="mt-6 p-4 bg-auto-yellow/10 border border-auto-yellow/30 rounded-xl">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="w-10 h-10 bg-auto-yellow rounded-full flex items-center justify-center text-black font-bold text-lg">₹</div>
+                        <div>
+                            <p class="font-bold text-sm" data-i18n="booking_fee">Booking Fee</p>
+                            <p class="text-xs opacity-70">₹20 (Refundable after ride)</p>
+                        </div>
+                    </div>
+                    <a href="upi://pay?pa=9123538859&pn=SavariAutoUnion&am=20&cu=INR" target="_blank" class="block w-full bg-auto-black text-auto-yellow text-center py-3 rounded-lg font-bold hover:bg-gray-800 transition">
+                        Pay ₹20 via GPay/UPI
+                    </a>
+                </div>
+
+                <button onclick="bookAuto()" class="w-full btn-primary mt-4 py-4 rounded-xl text-lg flex justify-center items-center gap-2 shadow-lg">
+                    <i data-lucide="zap" class="w-5 h-5"></i> <span data-i18n="confirm_book">Confirm Booking</span>
+                </button>
+            </div>
+
+            <!-- ACTIVE RIDE STATUS -->
+            <div id="ride-status-card" class="hidden glass-card p-6 rounded-2xl shadow-xl border-l-4 border-green-500">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 class="font-bold text-lg" data-i18n="ride_status">Ride Status</h3>
+                        <p id="status-text" class="text-sm opacity-70">Searching drivers...</p>
+                    </div>
+                    <div id="status-spinner" class="animate-spin text-auto-yellow"><i data-lucide="loader"></i></div>
+                </div>
+                
+                <div id="driver-info" class="hidden bg-white/50 dark:bg-black/30 p-4 rounded-xl border border-gray-200 dark:border-gray-600">
+                    <div class="flex items-center gap-3 mb-3">
+                        <div class="w-12 h-12 bg-auto-yellow rounded-full flex items-center justify-center text-xl shadow-md"></div>
+                        <div class="flex-1">
+                            <p class="font-bold" id="driver-name">Driver Name</p>
+                            <p class="text-xs opacity-70" id="driver-auto">TN-32 XX 0000</p>
+                        </div>
+                        <a id="call-btn" href="#" class="bg-green-500 text-white p-2.5 rounded-full shadow-lg"><i data-lucide="phone" class="w-5 h-5"></i></a>
+                    </div>
+                    <div class="bg-auto-black text-auto-yellow p-3 rounded-lg text-center text-sm font-mono flex items-center justify-center gap-2">
+                        <div class="w-2 h-2 bg-green-500 rounded-full pulse-dot"></div>
+                        <span data-i18n="tracking">Tracking Live Location...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= DRIVER VIEW ================= -->
+        <div id="driver-view" class="hidden space-y-6">
+            
+            <!-- DRIVER LOGIN / REGISTER -->
+            <div id="driver-login-step" class="glass-card p-6 rounded-2xl shadow-xl border-l-4 border-auto-yellow">
+                <h2 class="text-2xl font-bold mb-2 flex items-center gap-2"><i data-lucide="shield-check"></i> <span data-i18n="join_union">Join Union</span></h2>
+                <p class="text-sm opacity-70 mb-6" data-i18n="driver_verify_desc">Verify your details to start earning</p>
+                
+                <div class="space-y-4">
+                    <div class="relative">
+                        <span class="absolute left-4 top-3.5 text-gray-500 font-bold">+91</span>
+                        <input type="tel" id="d-phone" placeholder="98765 43210" class="w-full p-3 pl-14 bg-white/50 dark:bg-black/30 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-auto-yellow outline-none text-lg font-mono">
+                    </div>
+                    <input type="text" id="d-name" data-i18n-placeholder="name_ph" placeholder="Your Name" class="w-full p-3 bg-white/50 dark:bg-black/30 border border-gray-300 dark:border-gray-600 rounded-xl outline-none">
+                    <input type="text" id="d-auto" data-i18n-placeholder="auto_ph" placeholder="Auto Number (TN-32...)" class="w-full p-3 bg-white/50 dark:bg-black/30 border border-gray-300 dark:border-gray-600 rounded-xl outline-none">
+                    
+                    <button onclick="loginDriver()" class="w-full btn-primary py-3 rounded-xl font-bold shadow-lg flex justify-center items-center gap-2">
+                        <span data-i18n="verify_join">Verify & Join</span> <i data-lucide="check-circle" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- DRIVER ACTIVE DASHBOARD -->
+            <div id="driver-active-panel" class="hidden glass-card p-6 rounded-2xl shadow-xl border-l-4 border-green-500 text-center">
+                <div class="flex justify-end mb-2">
+                    <button onclick="logoutDriver()" class="text-xs text-red-500 underline flex items-center gap-1">
+                        <i data-lucide="log-out" class="w-3 h-3"></i> <span data-i18n="logout">Logout</span>
+                    </button>
+                </div>
+                <div class="relative w-24 h-24 mx-auto mb-4">
+                    <div class="absolute inset-0 bg-green-500/20 rounded-full pulse-dot"></div>
+                    <div class="relative w-24 h-24 bg-green-500 rounded-full flex items-center justify-center text-white shadow-xl z-10">
+                        <i data-lucide="radio" class="w-10 h-10"></i>
+                    </div>
+                </div>
+                <h3 class="text-xl font-bold text-green-600 dark:text-green-400" data-i18n="you_online">You are ONLINE</h3>
+                <p class="text-sm opacity-70 mt-2" data-i18n="waiting_req">Waiting for bookings...</p>
+                <p class="text-xs text-gray-400 mt-4 font-mono bg-black/20 py-1 px-3 rounded-full inline-block" id="live-coords">GPS: Locating...</p>
+                <button onclick="goOffline()" class="mt-6 text-red-500 text-sm font-medium underline bg-red-500/10 px-4 py-2 rounded-lg" data-i18n="go_offline">Go Offline</button>
+            </div>
+
+            <!-- INCOMING REQUESTS -->
+            <div id="requests-list" class="space-y-4"></div>
+        </div>
+
+    </div>
+
+    <!-- AUDIO -->
+    <audio id="notif-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3" preload="auto"></audio>
+
+    <script>
+        // ==========================================
+        // 1. FIREBASE CONFIG
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyBfCuon72CchSgADLyLPTlN-qGOzdc-EFQ",
+            authDomain: "autounnion.firebaseapp.com",
+            projectId: "autounnion",
+            storageBucket: "autounnion.firebasestorage.app",
+            messagingSenderId: "440292608929",
+            appId: "1:440292608929:web:e06a35a99e23734d2a99e0"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // ==========================================
+        // 2. LANGUAGE & THEME SYSTEM
+        // ==========================================
+        const translations = {
+            en: {
+                app_name: "Savari Union", settings_title: "Settings", language: "Language", theme: "Theme", logout: "Logout",
+                welcome_cust: "Welcome!", enter_phone_first: "Enter your phone number to continue", continue: "Continue",
+                book_ride: "Book an Auto", select_pickup: "Select Pickup Village", select_drop: "Select Drop Village",
+                booking_fee: "Booking Fee", confirm_book: "Confirm Booking", ride_status: "Ride Status", tracking: "Tracking Live Location...",
+                join_union: "Join Union", driver_verify_desc: "Verify your details to start earning", name_ph: "Your Name", auto_ph: "Auto Number (TN-32...)",
+                verify_join: "Verify & Join", you_online: "You are ONLINE", waiting_req: "Waiting for bookings...", go_offline: "Go Offline"
+            },
+            ta: {
+                app_name: "சவாரி சங்கம்", settings_title: "அமைப்புகள்", language: "மொழி", theme: "தீம்", logout: "வெளியேறு",
+                welcome_cust: "வணக்கம்!", enter_phone_first: "தொடர உங்கள் போன் நம்பரை உள்ளிடவும்", continue: "தொடர்க",
+                book_ride: "ஆட்டோ புக் செய்", select_pickup: "ஏறும் ஊரை தேர்வு செய்", select_drop: "இறங்கும் ஊரை தேர்வு செய்",
+                booking_fee: "புக்கிங் கட்டணம்", confirm_book: "புக்கிங்கை உறுதி செய்", ride_status: "பயண நிலை", tracking: "லைவ் ொகேஷன் டிராக்கிங்...",
+                join_union: "சங்கத்தில் இணையுங்கள்", driver_verify_desc: "சம்பாதிக்க உங்கள் விவரங்களை சரிபார்க்கவும்", name_ph: "உங்கள் பெயர்", auto_ph: "ஆட்டோ எண் (TN-32...)",
+                verify_join: "சரிபார்த்து இணையுங்கள்", you_online: "நீங்கள் ஆன்லைனில் உள்ளீர்கள்", waiting_req: "புக்கிங்கிற்காக காத்திருக்கிறது...", go_offline: "ஆஃப்லைனுக்கு போங்க"
+            }
+        };
+
+        let currentLang = localStorage.getItem('lang') || 'en';
+        let currentTheme = localStorage.getItem('theme') || 'light';
+
+        function updateTexts() {
+            document.querySelectorAll('[data-i18n]').forEach(el => el.innerText = translations[currentLang][el.dataset.i18n]);
+            document.body.className = currentLang === 'ta' ? `text-gray-900 dark:text-gray-100 min-h-screen pb-24 font-tamil ${currentTheme}` : `text-gray-900 dark:text-gray-100 min-h-screen pb-24 font-sans ${currentTheme}`;
+            
+            document.getElementById('btn-en').className = currentLang === 'en' ? "py-2 rounded-lg border-2 border-auto-yellow bg-auto-yellow/20 font-bold" : "py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 opacity-60";
+            document.getElementById('btn-ta').className = currentLang === 'ta' ? "py-2 rounded-lg border-2 border-auto-yellow bg-auto-yellow/20 font-bold" : "py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 opacity-60";
+        }
+
+        function setLang(lang) { currentLang = lang; localStorage.setItem('lang', lang); updateTexts(); }
+        
+        function setTheme(theme) {
+            currentTheme = theme;
+            localStorage.setItem('theme', theme);
+            document.body.classList.remove('light', 'dark');
+            document.body.classList.add(theme);
+            if(theme === 'dark') document.documentElement.classList.add('dark');
+            else document.documentElement.classList.remove('dark');
+            
+            document.getElementById('btn-light').className = theme === 'light' ? "py-2 rounded-lg border-2 border-auto-yellow bg-auto-yellow/20 font-bold flex items-center justify-center gap-2" : "py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 opacity-60 flex items-center justify-center gap-2";
+            document.getElementById('btn-dark').className = theme === 'dark' ? "py-2 rounded-lg border-2 border-auto-yellow bg-auto-yellow/20 font-bold flex items-center justify-center gap-2" : "py-2 rounded-lg border-2 border-gray-200 dark:border-gray-600 opacity-60 flex items-center justify-center gap-2";
+        }
+
+        function toggleSettings() { document.getElementById('settings-modal').classList.toggle('hidden'); }
+        setTheme(currentTheme); updateTexts();
+
+        // ==========================================
+        // 3. APP LOGIC WITH PERSISTENT LOGIN
+        // ==========================================
+        lucide.createIcons();
+        let currentUserRole = 'customer';
+        let currentBookingId = null;
+        let driverGeoWatcher = null;
+        let myDriverData = null;
+        let customerPhone = null;
+
+        // CHECK SAVED SESSION ON LOAD
+        window.onload = function() {
+            const savedDriver = localStorage.getItem('savari_driver_session');
+            if(savedDriver) {
+                myDriverData = JSON.parse(savedDriver);
+                // Switch to driver view automatically
+                currentUserRole = 'driver';
+                document.getElementById('role-label').innerText = 'Customer Mode';
+                document.getElementById('customer-view').classList.add('hidden');
+                document.getElementById('driver-view').classList.remove('hidden');
+                
+                // Show dashboard directly
+                document.getElementById('driver-login-step').classList.add('hidden');
+                document.getElementById('driver-active-panel').classList.remove('hidden');
+                
+                // Reconnect to Firebase listeners
+                startLiveLocation();
+                listenForBookings();
+                showToast(currentLang === 'ta' ? "மீண்டும் வரவேற்கிறோம்!" : "Welcome back!", "success");
+            }
+        };
+
+        function toggleRole() {
+            currentUserRole = currentUserRole === 'customer' ? 'driver' : 'customer';
+            document.getElementById('role-label').innerText = currentUserRole === 'customer' ? 'Driver Mode' : 'Customer Mode';
+            if(currentUserRole === 'customer') {
+                document.getElementById('customer-view').classList.remove('hidden');
+                document.getElementById('driver-view').classList.add('hidden');
+                stopDriverTracking();
+            } else {
+                document.getElementById('customer-view').classList.add('hidden');
+                document.getElementById('driver-view').classList.remove('hidden');
+                // If already logged in, show dashboard, else show login
+                if(myDriverData) {
+                    document.getElementById('driver-login-step').classList.add('hidden');
+                    document.getElementById('driver-active-panel').classList.remove('hidden');
+                    startLiveLocation();
+                    listenForBookings();
+                }
+            }
+        }
+
+        function showToast(msg, type='info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `<i data-lucide="${type==='success'?'check-circle':'bell'}" class="text-auto-yellow w-5 h-5"></i> <span>${msg}</span>`;
+            container.appendChild(toast);
+            lucide.createIcons();
+            document.getElementById('notif-sound').play().catch(e=>{});
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        // --- CUSTOMER FUNCTIONS ---
+        function loginCustomer() {
+            const phone = document.getElementById('cust-phone').value;
+            if(phone.length < 10) return alert("Valid phone number required");
+            customerPhone = phone;
+            localStorage.setItem('savari_customer_phone', phone); // Optional: Save customer too
+            document.getElementById('cust-login-step').classList.add('hidden');
+            document.getElementById('cust-booking-step').classList.remove('hidden');
+            showToast(currentLang === 'ta' ? "வெற்றிகரமாக சரிபார்க்கப்பட்டது!" : "Verified Successfully!", "success");
+        }
+
+        async function bookAuto() {
+            const pickup = document.getElementById('pickup').value;
+            const drop = document.getElementById('drop').value;
+            if(!pickup || !drop) return alert(currentLang === 'ta' ? "இரண்டு ஊர்களையும் தேர்வு செய்யவும்" : "Select both villages");
+
+            const bookingRef = await db.collection('bookings').add({
+                pickup, drop, status: 'pending', customerPhone, timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            currentBookingId = bookingRef.id;
+            document.getElementById('ride-status-card').classList.remove('hidden');
+            showToast(currentLang === 'ta' ? "கோரிக்கை அனுப்பப்பட்டது!" : "Request sent!", "success");
+
+            db.collection('bookings').doc(bookingRef.id).onSnapshot(doc => {
+                const data = doc.data();
+                if(data && data.status === 'accepted') {
+                    document.getElementById('status-text').innerText = currentLang === 'ta' ? "டிரைவர் வருகிறார்!" : "Driver is coming!";
+                    document.getElementById('status-spinner').classList.add('hidden');
+                    document.getElementById('driver-info').classList.remove('hidden');
+                    document.getElementById('driver-name').innerText = data.driverName;
+                    document.getElementById('driver-auto').innerText = data.driverAuto;
+                    document.getElementById('call-btn').href = `tel:${data.driverPhone}`;
+                    showToast(`${data.driverName} accepted!`, "success");
+                }
+            });
+        }
+
+        // --- DRIVER FUNCTIONS WITH PERSISTENCE ---
+        async function loginDriver() {
+            const phone = document.getElementById('d-phone').value;
+            const name = document.getElementById('d-name').value;
+            const auto = document.getElementById('d-auto').value;
+            
+            if(phone.length < 10 || !name || !auto) return alert("Fill all details correctly");
+
+            const doc = await db.collection('drivers').doc(phone).get();
+            if(!doc.exists) {
+                await db.collection('drivers').doc(phone).set({ name, auto, phone, online: false, joinedAt: new Date() });
+            }
+
+            myDriverData = { name, auto, phone, online: true };
+            
+            // SAVE TO LOCALSTORAGE FOR PERSISTENT LOGIN
+            localStorage.setItem('savari_driver_session', JSON.stringify(myDriverData));
+            
+            await db.collection('drivers').doc(phone).update({ online: true });
+            
+            document.getElementById('driver-login-step').classList.add('hidden');
+            document.getElementById('driver-active-panel').classList.remove('hidden');
+            showToast(currentLang === 'ta' ? "நீங்கள் ஆன்லைனில் உள்ளீர்கள்" : "You are ONLINE", "success");
+            startLiveLocation();
+            listenForBookings();
+        }
+
+        function logoutDriver() {
+            // CLEAR LOCALSTORAGE
+            localStorage.removeItem('savari_driver_session');
+            myDriverData = null;
+            stopDriverTracking();
+            
+            // Update DB status
+            const phone = document.getElementById('d-phone').value || localStorage.getItem('last_driver_phone');
+            if(phone) db.collection('drivers').doc(phone).update({online: false}).catch(()=>{});
+            
+            document.getElementById('driver-active-panel').classList.add('hidden');
+            document.getElementById('driver-login-step').classList.remove('hidden');
+            showToast(currentLang === 'ta' ? "வெற்றிகரமாக வெளியேறினீர்கள்" : "Logged out successfully");
+        }
+
+        function startLiveLocation() {
+            if(navigator.geolocation) {
+                driverGeoWatcher = navigator.geolocation.watchPosition(pos => {
+                    const { latitude, longitude } = pos.coords;
+                    document.getElementById('live-coords').innerText = `GPS: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+                    if(myDriverData) db.collection('drivers').doc(myDriverData.phone).update({ lat: latitude, lng: longitude, lastUpdate: new Date() });
+                }, null, { enableHighAccuracy: true });
+            }
+        }
+
+        function stopDriverTracking() { if(driverGeoWatcher) navigator.geolocation.clearWatch(driverGeoWatcher); }
+        
+        function goOffline() {
+            stopDriverTracking();
+            if(myDriverData) db.collection('drivers').doc(myDriverData.phone).update({online: false});
+            // Keep session saved but mark offline in DB
+            showToast(currentLang === 'ta' ? "ஆப்லைனுக்கு சென்றீர்கள்" : "You are OFFLINE");
+        }
+
+        function listenForBookings() {
+            db.collection('bookings').where('status', '==', 'pending').orderBy('timestamp', 'desc')
+              .onSnapshot(snapshot => {
+                const list = document.getElementById('requests-list');
+                list.innerHTML = '';
+                snapshot.forEach(doc => {
+                    const b = doc.data();
+                    const div = document.createElement('div');
+                    div.className = 'glass-card p-4 rounded-xl shadow-sm border-l-4 border-auto-yellow animate-pulse';
+                    div.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <h4 class="font-bold text-lg">${currentLang === 'ta' ? 'புதிய புக்கிங்' : 'New Booking'}</h4>
+                            <span class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Just Now</span>
+                        </div>
+                        <p class="text-sm opacity-70 mb-1"><strong>From:</strong> ${b.pickup}</p>
+                        <p class="text-sm opacity-70 mb-3"><strong>To:</strong> ${b.drop}</p>
+                        <div class="flex gap-2">
+                            <button onclick="acceptRide('${doc.id}')" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700 shadow-lg">ACCEPT</button>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+                if(snapshot.empty) list.innerHTML = '<p class="text-center opacity-50 py-4 glass-card rounded-xl">No pending bookings</p>';
+            });
+        }
+
+        async function acceptRide(bookingId) {
+            if(!myDriverData) return alert("Register first!");
+            await db.collection('bookings').doc(bookingId).update({
+                status: 'accepted', driverName: myDriverData.name, driverAuto: myDriverData.auto, driverPhone: myDriverData.phone
+            });
+            showToast(currentLang === 'ta' ? "புக்கிங் ஏற்கப்பட்டது!" : "Ride Accepted!", "success");
+        }
+    </script>
+</body>
+</html>
